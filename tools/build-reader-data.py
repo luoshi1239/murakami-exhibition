@@ -9,6 +9,35 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 
+AD_PATTERNS = re.compile(
+    r'欢迎关注微信公众号|小书呆读书纪|海量电子书|听读学社|多种格式方便你阅读|'
+    r'Digital Lab|数字业务的实验部门|关注微博|微信服务号|我们的产品',
+    re.I,
+)
+
+
+def plain_text(html: str) -> str:
+    return re.sub(r'<[^>]+>', ' ', html).replace('&nbsp;', ' ').strip()
+
+
+def remove_ad_nodes(html: str) -> str:
+    for tag in ('h1', 'h2', 'h3', 'p', 'li', 'aside', 'section', 'div'):
+        node_pattern = re.compile(rf'<(?P<tag>{tag})\b[^>]*>.*?</(?P=tag)>', re.I | re.S)
+        while True:
+            removed = False
+            for match in list(node_pattern.finditer(html)):
+                node_text = plain_text(match.group(0))
+                if AD_PATTERNS.search(node_text):
+                    html = html[:match.start()] + html[match.end():]
+                    removed = True
+                    break
+            if not removed:
+                break
+    html = re.sub(r'<p\b[^>]*class=["\'][^"\']*picture[^"\']*["\'][^>]*>\s*</p>', '', html, flags=re.I)
+    html = re.sub(r'<p\b[^>]*>\s*</p>', '', html, flags=re.I)
+    return html.strip()
+
+
 def local_name(tag: str) -> str:
     return tag.rsplit('}', 1)[-1]
 
@@ -70,7 +99,8 @@ def build(epub: Path, output: Path) -> dict:
             path = resolve(opf_path, item['href'])
             if path not in archive.namelist():
                 continue
-            html = rewrite_internal_links(text_from_xhtml(archive.read(path)), path, chapter_map)
+            html = remove_ad_nodes(text_from_xhtml(archive.read(path)))
+            html = rewrite_internal_links(html, path, chapter_map)
             if html:
                 chapters.append({'number': number, 'html': html})
         result = {'title': epub.stem, 'chapters': chapters}
