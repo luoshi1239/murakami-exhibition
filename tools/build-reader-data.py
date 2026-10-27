@@ -10,8 +10,7 @@ from xml.etree import ElementTree as ET
 
 
 AD_PATTERNS = re.compile(
-    r'欢迎关注微信公众号|小书呆读书纪|海量电子书|听读学社|多种格式方便你阅读|'
-    r'Digital Lab|数字业务的实验部门|关注微博|微信服务号|我们的产品',
+    r'欢迎关注微信公众号|小书呆读书纪|海量电子书|听读学社|多种格式方便你阅读',
     re.I,
 )
 
@@ -21,22 +20,24 @@ def plain_text(html: str) -> str:
 
 
 def remove_ad_nodes(html: str) -> str:
-    for tag in ('h1', 'h2', 'h3', 'p', 'li', 'aside', 'section', 'div'):
+    # 只删除独立的短广告节点，绝不删除外层 div、section 或正文容器。
+    for tag in ('p', 'li', 'aside'):
         node_pattern = re.compile(rf'<(?P<tag>{tag})\b[^>]*>.*?</(?P=tag)>', re.I | re.S)
         while True:
             removed = False
             for match in list(node_pattern.finditer(html)):
                 node_text = plain_text(match.group(0))
-                if AD_PATTERNS.search(node_text):
+                if AD_PATTERNS.search(node_text) and len(node_text) <= 300:
                     html = html[:match.start()] + html[match.end():]
                     removed = True
                     break
             if not removed:
                 break
+    if AD_PATTERNS.search(plain_text(html)) and len(plain_text(html)) <= 300:
+        return ''
     html = re.sub(r'<p\b[^>]*class=["\'][^"\']*picture[^"\']*["\'][^>]*>\s*</p>', '', html, flags=re.I)
     html = re.sub(r'<p\b[^>]*>\s*</p>', '', html, flags=re.I)
     return html.strip()
-
 
 def local_name(tag: str) -> str:
     return tag.rsplit('}', 1)[-1]
